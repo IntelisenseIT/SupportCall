@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SupportCall — Desktop tray window</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --wall1:#12161f; --wall2:#1b2333;
+  --panel:rgba(28,33,44,.94); --panel-line:rgba(255,255,255,.09);
+  --taskbar:rgba(18,21,28,.92);
+  --text:#EAEEF4; --dim:#98A2B3; --faint:#6B7484;
+  --red:#F0433F; --red-bg:rgba(240,67,63,.14); --red-line:rgba(240,67,63,.45);
+  --green:#38C97D; --green-bg:rgba(56,201,125,.14);
+  --amber:#F2A93B; --blue:#5CA4FF;
+  --ui:"Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:var(--ui);font-size:14px;color:var(--text);overflow:hidden;
+  background:linear-gradient(160deg,var(--wall2),var(--wall1) 70%)}
+.desktop{position:relative;width:100vw;height:100vh}
+
+.hint{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--faint);user-select:none}
+.hint .big{font-size:15px;color:var(--dim)}
+.hint .small{font-size:12.5px;margin-top:6px}
+kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--panel-line);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--dim)}
+
+.taskbar{position:absolute;left:0;right:0;bottom:0;height:48px;background:var(--taskbar);
+  backdrop-filter:blur(14px);border-top:1px solid var(--panel-line);display:flex;align-items:center;padding:0 10px}
+.tb-center{position:absolute;left:50%;transform:translateX(-50%);display:flex;gap:6px}
+.tb-icon{width:38px;height:38px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--dim)}
+.tb-icon:hover{background:rgba(255,255,255,.07)}
+.tb-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tb-icon.start svg{stroke:var(--blue)}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:2px}
+.tray-btn{position:relative;width:38px;height:38px;border:none;background:none;border-radius:6px;color:var(--dim);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.tray-btn:hover{background:rgba(255,255,255,.07)}
+.tray-btn:focus-visible{outline:2px solid var(--blue);outline-offset:-2px}
+.tray-btn svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.tray-btn .dot{position:absolute;top:7px;right:7px;width:8px;height:8px;border-radius:50%;background:var(--green);border:2px solid #14171e}
+.tray-btn .dot.alerting{background:var(--red);animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:.2}}
+@media (prefers-reduced-motion:reduce){.tray-btn .dot.alerting{animation:none}.toast{transition:none !important}}
+.clockbox{text-align:right;font-size:12px;line-height:1.35;color:var(--dim);padding:0 10px;cursor:default}
+
+.flyout{position:absolute;right:12px;bottom:60px;width:372px;max-height:calc(100vh - 90px);
+  background:var(--panel);backdrop-filter:blur(18px);border:1px solid var(--panel-line);
+  border-radius:10px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 16px 48px rgba(0,0,0,.5)}
+.flyout.on{display:flex}
+.fly-head{padding:14px 16px 12px;border-bottom:1px solid var(--panel-line);display:flex;align-items:center;gap:10px}
+.fly-head .ring{width:11px;height:11px;border-radius:50%;background:var(--green);box-shadow:0 0 0 4px var(--green-bg)}
+.fly-head .t{font-weight:600;font-size:14.5px}
+.fly-head .s{font-size:12px;color:var(--dim)}
+.fly-body{padding:12px 16px;overflow-y:auto}
+.sect{font-size:11px;letter-spacing:1.2px;color:var(--faint);margin:10px 0 6px;font-family:var(--mono)}
+.kv{display:flex;justify-content:space-between;padding:6px 0;font-size:13px;border-bottom:1px solid rgba(255,255,255,.05)}
+.kv:last-child{border-bottom:none}
+.kv .k{color:var(--dim)}
+.ok{color:var(--green)} .warn{color:var(--amber)} .bad{color:var(--red)}
+.fly-foot{padding:12px 16px;border-top:1px solid var(--panel-line)}
+select{background:rgba(255,255,255,.06);border:1px solid var(--panel-line);border-radius:6px;color:var(--text);font-family:var(--ui);font-size:13px;padding:6px 8px}
+
+button{font-family:var(--ui);font-size:13.5px;border-radius:6px;border:1px solid var(--panel-line);
+  background:rgba(255,255,255,.06);color:var(--text);padding:9px 14px;cursor:pointer}
+button:hover{background:rgba(255,255,255,.11)}
+button:active{transform:scale(.99)}
+button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.block{width:100%;display:block}
+.btn-danger{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
+.btn-danger:hover{background:#ff5a56}
+.btn-accept{background:var(--green);border-color:var(--green);color:#06130C;font-weight:600;font-size:14.5px;padding:11px}
+.btn-accept:hover{background:#4bdb90}
+.ghost{background:transparent;border-color:transparent;color:var(--dim)}
+.ghost:hover{color:var(--text);background:rgba(255,255,255,.06)}
+
+.hist-item{border:1px solid rgba(255,255,255,.07);border-radius:8px;margin-bottom:8px;overflow:hidden;font-size:12.5px}
+.hist-head{display:flex;justify-content:space-between;gap:8px;padding:9px 12px;cursor:pointer}
+.hist-head:hover{background:rgba(255,255,255,.05)}
+.hist-meta{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:2px}
+.chip{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:1px 8px;border-radius:999px;white-space:nowrap;align-self:flex-start}
+.chip.ok{background:var(--green-bg);color:var(--green)}
+.chip.warn{background:rgba(242,169,59,.14);color:var(--amber)}
+.chip.bad{background:var(--red-bg);color:var(--red)}
+.chip.p1{background:var(--red-bg);color:var(--red);border:1px solid var(--red-line);font-size:11px;padding:2px 9px}
+.trail{display:none;border-top:1px solid rgba(255,255,255,.07);padding:9px 12px;font-family:var(--mono);font-size:11px;line-height:1.9;color:var(--dim);white-space:pre-wrap}
+.trail.open{display:block}
+
+.toast{position:absolute;right:12px;bottom:60px;width:396px;background:var(--panel);
+  backdrop-filter:blur(18px);border:1px solid var(--panel-line);border-radius:10px;overflow:hidden;
+  box-shadow:0 20px 60px rgba(0,0,0,.55);transform:translateX(430px);transition:transform .28s ease;z-index:30}
+.toast.on{transform:translateX(0)}
+.toast.urgent{border-color:var(--red-line)}
+.toast-app{display:flex;align-items:center;gap:8px;padding:9px 14px;border-bottom:1px solid var(--panel-line);font-size:12px;color:var(--dim)}
+.toast-app .mini{width:16px;height:16px;border-radius:4px;background:var(--red-bg);display:flex;align-items:center;justify-content:center}
+.toast-app .mini svg{width:11px;height:11px;stroke:var(--red);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.toast-app .when{margin-left:auto;font-family:var(--mono);font-size:11px}
+.toast-app .mute{margin-left:6px;border:none;background:none;color:var(--faint);padding:2px 4px;border-radius:4px;font-size:14px;line-height:1;cursor:pointer}
+.toast-app .mute:hover{color:var(--text)}
+.toast-body{padding:14px 16px 8px}
+.t-title{font-size:16.5px;font-weight:600;line-height:1.3;margin-top:8px}
+.t-cust{color:var(--dim);margin-top:3px;font-size:13.5px}
+.t-ref{font-family:var(--mono);font-size:11.5px;color:var(--faint);margin-top:2px}
+.t-cd{display:flex;align-items:baseline;gap:8px;margin-top:12px}
+.t-cd .lbl{font-size:12px;color:var(--faint)}
+.t-cd .val{font-family:var(--mono);font-size:24px;font-weight:500;font-variant-numeric:tabular-nums}
+.t-cd .val.late{color:var(--red)}
+.t-bar{height:3px;background:rgba(255,255,255,.09);border-radius:2px;margin-top:8px;overflow:hidden}
+.t-bar .fill{height:100%;width:0%;background:var(--red)}
+.t-notice{font-family:var(--mono);font-size:11px;color:var(--amber);min-height:16px;margin-top:8px}
+.toast-actions{padding:10px 14px 14px;display:flex;flex-direction:column;gap:8px}
+.toast-actions .row{display:flex;gap:8px}
+.toast-actions .row button{flex:1}
+.reasons{display:none;flex-direction:column;gap:6px;padding:0 14px 14px}
+.reasons.on{display:flex}
+.esc-wrap{display:none;padding:0 16px 14px}
+.esc-wrap.on{display:block}
+.esc-log{background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.07);border-radius:8px;
+  padding:10px 12px;font-family:var(--mono);font-size:11.5px;line-height:2;color:var(--dim);min-height:80px}
+.esc-log .acc{color:var(--green)} .esc-log .tmo{color:var(--red)} .esc-log .you{color:var(--text)}
+
+.done-toast{position:absolute;right:12px;bottom:60px;width:360px;background:var(--panel);backdrop-filter:blur(18px);
+  border:1px solid var(--panel-line);border-radius:10px;padding:14px 16px;display:none;gap:12px;align-items:flex-start;
+  box-shadow:0 16px 48px rgba(0,0,0,.5);z-index:29}
+.done-toast.on{display:flex}
+.done-toast .ic{width:34px;height:34px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center;flex:none}
+.done-toast .ic svg{width:18px;height:18px;stroke:var(--green);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.done-toast b{font-weight:600;font-size:14px;display:block}
+.done-toast small{color:var(--dim);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="desktop">
+
+  <div class="hint">
+    <p class="big">SupportCall desktop — system tray simulation</p>
+    <p class="small">Click the bell in the system tray (bottom right) to open the on-call flyout,<br>
+    or press <kbd>T</kbd> to trigger an incoming P1 incident. <kbd>A</kbd> accept · <kbd>R</kbd> reject while ringing.</p>
+  </div>
+
+  <div class="flyout" id="flyout" role="dialog" aria-label="SupportCall status flyout">
+    <div class="fly-head">
+      <span class="ring"></span>
+      <div>
+        <div class="t">You are on call</div>
+        <div class="s">ERP support · 18:00 to 07:00 · David Chen</div>
+      </div>
+    </div>
+    <div class="fly-body">
+      <p class="sect">READINESS</p>
+      <div class="kv"><span class="k">Desktop notifications</span><span id="r-notif" class="warn">Not yet allowed</span></div>
+      <div class="kv"><span class="k">Alert sound</span><span class="ok">Enabled · loops until action</span></div>
+      <div class="kv"><span class="k">Starts with Windows</span><span class="ok">Enabled</span></div>
+      <div class="kv"><span class="k">Focus assist</span><span class="ok">Priority breakthrough allowed</span></div>
+      <div class="kv"><span class="k">Backend connection</span><span class="ok">Connected · SignalR</span></div>
+      <p class="sect">RECENT ALERTS</p>
+      <div id="hist-list"></div>
+    </div>
+    <div class="fly-foot">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+        <span style="font-size:12.5px;color:var(--dim);flex:1">Response window</span>
+        <select id="set-window">
+          <option value="60">60 s (demo)</option>
+          <option value="300">5 min (production)</option>
+        </select>
+      </div>
+      <button class="block btn-danger" id="btn-trigger">Trigger incoming P1 incident</button>
+      <button class="block ghost" id="btn-perm" style="margin-top:8px">Enable desktop notifications</button>
+    </div>
+  </div>
+
+  <div class="toast urgent" id="toast" role="alertdialog" aria-label="Urgent support incident">
+    <div class="toast-app">
+      <span class="mini"><svg viewBox="0 0 24 24"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/></svg></span>
+      SupportCall <span class="when" id="t-when">Now</span>
+      <button class="mute" id="btn-mute" aria-label="Mute alert sound" title="Mute alert sound">🔊</button>
+    </div>
+    <div class="toast-body">
+      <span class="chip p1">P1</span>
+      <p class="t-title" id="t-title">Production system unavailable</p>
+      <p class="t-cust">ABC Manufacturing</p>
+      <p class="t-ref" id="t-ref">INC-10452 · ERP out-of-hours</p>
+      <div class="t-cd"><span class="lbl">Escalating in</span><span class="val" id="t-cd">01:00</span></div>
+      <div class="t-bar"><div class="fill" id="t-fill"></div></div>
+      <p class="t-notice" id="t-notice"></p>
+    </div>
+    <div class="toast-actions" id="t-actions">
+      <button class="block btn-accept" id="btn-accept">Accept incident</button>
+      <div class="row">
+        <button id="btn-reject" style="color:var(--red)">Reject</button>
+        <button id="btn-view">View ticket</button>
+      </div>
+    </div>
+    <div class="reasons" id="reasons"></div>
+    <div class="esc-wrap" id="esc-wrap">
+      <div class="esc-log" id="esc-log"></div>
+      <button class="block ghost" id="btn-esc-close" style="margin-top:8px;visibility:hidden">Dismiss</button>
+    </div>
+  </div>
+
+  <div class="done-toast" id="done-toast">
+    <span class="ic"><svg viewBox="0 0 24 24"><path d="M5 12l5 5l10 -10"/></svg></span>
+    <div><b id="done-title">Incident accepted</b><small id="done-sub"></small></div>
+  </div>
+
+  <div class="taskbar">
+    <div class="tb-center">
+      <div class="tb-icon start"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/></svg></div>
+      <div class="tb-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M8 12h8"/></svg></div>
+      <div class="tb-icon"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg></div>
+      <div class="tb-icon"><svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20v-9l6 -6l6 6v9"/></svg></div>
+    </div>
+    <div class="tb-right">
+      <button class="tray-btn" aria-label="Hidden icons"><svg viewBox="0 0 24 24"><path d="M6 15l6 -6l6 6"/></svg></button>
+      <button class="tray-btn" id="tray-bell" aria-label="SupportCall tray icon">
+        <svg viewBox="0 0 24 24"><path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6"/><path d="M9 17v1a3 3 0 0 0 6 0v-1"/></svg>
+        <span class="dot" id="tray-dot"></span>
+      </button>
+      <div class="clockbox" id="clockbox"><div id="clk-time">--:--</div><div id="clk-date">—</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+var $=function(id){return document.getElementById(id)};
+var pad=function(n){return String(n).padStart(2,"0")};
+var fmt=function(s){return pad(Math.floor(s/60))+":"+pad(s%60)};
+var nowHM=function(){var d=new Date();return pad(d.getHours())+":"+pad(d.getMinutes())};
+var nowHMS=function(){var d=new Date();return nowHM()+":"+pad(d.getSeconds())};
+
+var state={windowSec:60,sound:true,ringing:false,secs:0,timers:[],tick:null,loop:null,ticket:null,
+  chain:[{name:"David Chen",role:"primary engineer"},{name:"Sarah Thompson",role:"secondary engineer"},
+         {name:"Marcus Webb",role:"senior support engineer"},{name:"Priya Nair",role:"support manager"},
+         {name:"Emergency group",role:"all hands"}],
+  history:[
+    {time:"02:14",ref:"INC-10391",title:"Production system unavailable",result:"Accepted by you",tone:"ok",
+     trail:["02:14:02  Alerted David (you)","02:14:48  Accepted by David"]},
+    {time:"23:42",ref:"INC-10377",title:"EDI processing failure",result:"Rejected by you",tone:"warn",
+     trail:["23:42:01  Alerted David (you)","23:43:10  Rejected by David: unavailable","23:43:11  Alerted Sarah","23:44:05  Accepted by Sarah"]}
+  ]};
+var REASONS=["Unavailable","No system access","Already handling another incident","Skip reason"];
+
+var actx=null;
+function chirp(times){
+  if(!state.sound)return;
+  try{
+    if(!actx)actx=new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==="suspended")actx.resume();
+    var t=actx.currentTime;
+    for(var i=0;i<(times||1);i++){
+      var o=actx.createOscillator(),g=actx.createGain();
+      o.type="square";o.frequency.value=880;
+      g.gain.setValueAtTime(0.0001,t+i*0.28);
+      g.gain.exponentialRampToValueAtTime(0.1,t+i*0.28+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+i*0.28+0.22);
+      o.connect(g);g.connect(actx.destination);
+      o.start(t+i*0.28);o.stop(t+i*0.28+0.25);
+    }
+  }catch(e){}
+}
+function notify(title,body){
+  if(!("Notification" in window))return;
+  if(Notification.permission==="granted"){try{new Notification(title,{body:body,tag:"supportcall-desktop"});}catch(e){}}
+}
+
+setInterval(function(){
+  $("clk-time").textContent=nowHM();
+  $("clk-date").textContent=new Date().toLocaleDateString(undefined,{day:"2-digit",month:"2-digit",year:"numeric"});
+},1000);
+$("clk-time").textContent=nowHM();
+$("clk-date").textContent=new Date().toLocaleDateString(undefined,{day:"2-digit",month:"2-digit",year:"numeric"});
+
+$("tray-bell").addEventListener("click",function(){
+  if($("toast").classList.contains("on"))return;
+  $("flyout").classList.toggle("on");
+  if($("flyout").classList.contains("on"))renderFlyout();
+});
+document.addEventListener("click",function(e){
+  if(!$("flyout").classList.contains("on"))return;
+  if($("flyout").contains(e.target)||$("tray-bell").contains(e.target))return;
+  $("flyout").classList.remove("on");
+});
+
+function renderFlyout(){
+  var perm=("Notification" in window)?Notification.permission:"unsupported";
+  var el=$("r-notif");
+  el.textContent=perm==="granted"?"Enabled":perm==="denied"?"Blocked":perm==="unsupported"?"Unsupported":"Not yet allowed";
+  el.className=perm==="granted"?"ok":perm==="denied"?"bad":"warn";
+  $("btn-perm").style.display=(perm==="default")?"block":"none";
+  var wrap=$("hist-list");wrap.innerHTML="";
+  state.history.slice(0,5).forEach(function(e){
+    var d=document.createElement("div");d.className="hist-item";
+    d.innerHTML='<div class="hist-head"><div><div>'+e.title+'</div><div class="hist-meta">'+e.time+' · '+e.ref+'</div></div>'+
+      '<span class="chip '+e.tone+'">'+e.result+'</span></div><div class="trail">'+e.trail.join("\n")+'</div>';
+    d.querySelector(".hist-head").addEventListener("click",function(){
+      d.querySelector(".trail").classList.toggle("open");
+    });
+    wrap.appendChild(d);
+  });
+}
+$("btn-perm").addEventListener("click",function(){Notification.requestPermission().then(renderFlyout)});
+$("set-window").addEventListener("change",function(e){state.windowSec=+e.target.value});
+
+function clearTimers(){
+  state.timers.forEach(clearTimeout);state.timers=[];
+  if(state.tick){clearInterval(state.tick);state.tick=null}
+  if(state.loop){clearInterval(state.loop);state.loop=null}
+}
+
+$("btn-trigger").addEventListener("click",startIncident);
+function startIncident(){
+  if(state.ringing)return;
+  clearTimers();
+  $("flyout").classList.remove("on");
+  var n=10452+state.history.length;
+  state.ticket={ref:"INC-"+n,title:"Production system unavailable",
+    trail:[nowHMS()+"  Alerted David (you) — desktop"]};
+  state.secs=state.windowSec;state.ringing=true;
+  $("t-ref").textContent=state.ticket.ref+" · ERP out-of-hours";
+  $("t-cd").textContent=fmt(state.secs);
+  $("t-cd").classList.remove("late");
+  $("t-fill").style.width="0%";
+  $("t-notice").textContent="";
+  $("t-when").textContent="Now";
+  $("t-actions").style.display="flex";
+  $("reasons").classList.remove("on");
+  $("esc-wrap").classList.remove("on");
+  $("tray-dot").classList.add("alerting");
+  $("toast").classList.add("on");
+  chirp(3);
+  notify("URGENT — P1 incident","Production system unavailable · ABC Manufacturing · "+state.ticket.ref);
+  state.loop=setInterval(function(){chirp(2)},2600);
+  var W=state.windowSec,fired=[false,false,false];
+  state.tick=setInterval(function(){
+    state.secs--;
+    if(state.secs<0){onTimeout();return}
+    $("t-cd").textContent=fmt(state.secs);
+    var elapsed=W-state.secs;
+    $("t-fill").style.width=Math.min(100,elapsed/W*100)+"%";
+    if(state.secs<=Math.round(W*0.3))$("t-cd").classList.add("late");
+    if(!fired[0]&&elapsed>=Math.round(W*0.2)){fired[0]=true;$("t-notice").textContent="Second attention notification";notify("SupportCall reminder","Still awaiting your response — "+state.ticket.ref)}
+    if(!fired[1]&&elapsed>=Math.round(W*0.4)){fired[1]=true;$("t-notice").textContent="Reminder — toast remains until action"}
+    if(!fired[2]&&elapsed>=Math.round(W*0.7)){fired[2]=true;$("t-notice").textContent="Final warning — escalation imminent";notify("FINAL WARNING","Escalating "+state.ticket.ref+" in "+fmt(state.secs))}
+  },1000);
+}
+
+function closeAttempt(line){
+  clearTimers();state.ringing=false;
+  $("tray-dot").classList.remove("alerting");
+  state.ticket.trail.push(nowHMS()+"  "+line);
+}
+function pushHistory(result,tone){
+  state.history.unshift({time:nowHM(),ref:state.ticket.ref,title:state.ticket.title,result:result,tone:tone,trail:state.ticket.trail});
+}
+
+$("btn-accept").addEventListener("click",onAccept);
+function onAccept(){
+  if(!state.ringing)return;
+  closeAttempt("Accepted by David");
+  state.ticket.trail.push(nowHMS()+"  Alerts cancelled on all devices");
+  pushHistory("Accepted by you","ok");
+  $("toast").classList.remove("on");
+  showDone("Incident accepted","You are the responder for "+state.ticket.ref+". Alerts cancelled on your other devices.");
+  chirp(1);
+}
+
+$("btn-reject").addEventListener("click",function(){
+  if(!state.ringing)return;
+  var wrap=$("reasons");wrap.innerHTML="";
+  REASONS.forEach(function(r){
+    var b=document.createElement("button");b.className="block";b.textContent=r;
+    b.addEventListener("click",function(){onReject(r)});
+    wrap.appendChild(b);
+  });
+  var back=document.createElement("button");back.className="block ghost";back.textContent="Back";
+  back.addEventListener("click",function(){wrap.classList.remove("on");$("t-actions").style.display="flex"});
+  wrap.appendChild(back);
+  $("t-actions").style.display="none";
+  wrap.classList.add("on");
+});
+function onReject(reason){
+  if(!state.ringing)return;
+  closeAttempt(reason==="Skip reason"?"Rejected by David":"Rejected by David: "+reason.toLowerCase());
+  pushHistory("Rejected by you","warn");
+  runEscalation();
+}
+function onTimeout(){
+  closeAttempt("No response — attempt closed");
+  pushHistory("Timed out","bad");
+  runEscalation();
+}
+
+$("btn-view").addEventListener("click",function(){
+  showDone("Opens the support system","Deep link to "+(state.ticket?state.ticket.ref:"the ticket")+". The alert app never edits tickets.");
+});
+
+function runEscalation(){
+  $("t-actions").style.display="none";
+  $("reasons").classList.remove("on");
+  $("t-notice").textContent="";
+  var wrap=$("esc-wrap");wrap.classList.add("on");
+  $("btn-esc-close").style.visibility="hidden";
+  var log=$("esc-log");log.innerHTML="";
+  state.ticket.trail.slice(-1).forEach(function(l){addLog(log,l,"you")});
+  stepStage(1,log);
+}
+function addLog(log,text,cls){
+  var d=document.createElement("div");if(cls)d.className=cls;d.textContent=text;log.appendChild(d);
+}
+function stepStage(i,log){
+  var entry=state.history[0];
+  if(i>=state.chain.length){
+    var l=nowHMS()+"  Emergency fallback triggered";
+    addLog(log,l,"tmo");entry.trail.push(l);
+    $("btn-esc-close").style.visibility="visible";return;
+  }
+  var who=state.chain[i];
+  var alerted=nowHMS()+"  Alerted "+who.name+" ("+who.role+")";
+  addLog(log,alerted);entry.trail.push(alerted);
+  var accepts=Math.random()<0.75;
+  state.timers.push(setTimeout(function(){
+    if(accepts){
+      var l=nowHMS()+"  Accepted by "+who.name;
+      addLog(log,l,"acc");
+      entry.trail.push(l,nowHMS()+"  Alerts cancelled on all devices");
+      $("btn-esc-close").style.visibility="visible";
+      chirp(1);
+    }else{
+      var l2=nowHMS()+"  No response from "+who.name+" — escalating";
+      addLog(log,l2,"tmo");entry.trail.push(l2);
+      stepStage(i+1,log);
+    }
+  },2500+Math.random()*3500));
+}
+$("btn-esc-close").addEventListener("click",function(){$("toast").classList.remove("on")});
+
+$("btn-mute").addEventListener("click",function(){
+  state.sound=!state.sound;
+  $("btn-mute").textContent=state.sound?"🔊":"🔇";
+});
+
+var doneTimer=null;
+function showDone(title,sub){
+  $("done-title").textContent=title;
+  $("done-sub").textContent=sub;
+  $("done-toast").classList.add("on");
+  clearTimeout(doneTimer);
+  doneTimer=setTimeout(function(){$("done-toast").classList.remove("on")},6000);
+}
+
+document.addEventListener("keydown",function(e){
+  if(e.key==="t"||e.key==="T"){if(!state.ringing)startIncident();return}
+  if(!state.ringing)return;
+  if(e.key==="a"||e.key==="A")onAccept();
+  if(e.key==="r"||e.key==="R")$("btn-reject").click();
+});
+</script>
+</body>
+</html>
