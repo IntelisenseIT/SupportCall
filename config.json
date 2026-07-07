@@ -1,0 +1,18 @@
+{
+  "policy": {
+    "windowSec": 300,
+    "chain": [
+      { "userId": "U001", "name": "David Chen", "role": "primary engineer" },
+      { "userId": "U002", "name": "Sarah Thompson", "role": "secondary engineer" },
+      { "userId": "U003", "name": "Marcus Webb", "role": "senior support engineer" },
+      { "userId": "U004", "name": "Priya Nair", "role": "support manager" },
+      { "userId": "U005", "name": "Emergency group", "role": "all hands" }
+    ]
+  },
+  "users": [
+    { "userId": "U001", "name": "David Chen", "email": "david.chen@company.com" },
+    { "userId": "U002", "name": "Sarah Thompson", "email": "sarah.thompson@company.com" },
+    { "userId": "U003", "name": "Marcus Webb", "email": "marcus.webb@company.com" },
+    { "userId": "U004", "name": "Priya Nair", "email": "priya.nair@company.com" }
+  ]
+}

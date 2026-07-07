@@ -1,82 +1,86 @@
-# SupportCall
+# SupportCall — PWA build
 
-> Your support system manages the incident. This application makes sure
-> someone responds to it.
+A progressive web app version of the out-of-hours incident alert prototype.
+Installs to a phone home screen, runs standalone, works offline, and persists
+your settings and support hours on the device.
 
-Out-of-hours incident alert and acknowledgement:
-**Alert → Get attention → Accept or Reject → Escalate → Audit**
+## Files
 
-## Repository layout
+| File | Purpose |
+| --- | --- |
+| index.html | The app (all screens and logic) |
+| manifest.webmanifest | Install metadata — name, icons, standalone display |
+| sw.js | Service worker — offline shell caching, push and notification-click handlers |
+| icon-192.png, icon-512.png, icon-maskable-512.png | App icons |
 
-```
-server/            Alert Orchestrator — runnable reference implementation
-  orchestrator.js    Domain core: state machine, server-owned timers,
-                     atomic first-accept-wins, escalation, audit trail
-  server.js          HTTP + SSE transport, health endpoint, JSON snapshots
-  config.json        Seed escalation policy
-  test/              14 automated tests (node --test), incl. acceptance race,
-                     timeout cascade, chain exhaustion, crash recovery
-clients/
-  pwa/               Installable mobile PWA (sign-in, biometric app lock,
-                     support hours, offline shell)
-  desktop/           Windows tray-window simulation (call-style toast,
-                     looping audio until action)
-docs/
-  API.md             REST/SSE contract for the dev team
-  PRODUCTION-PLAN.md Phased path to production
-```
+## Hosting
 
-## Run it
+PWAs require HTTPS (localhost is exempt for testing). Any static host works:
 
-Requires Node >= 20. No dependencies, no build step.
+- Quick test on your machine: `python3 -m http.server 8080` in this folder,
+  then open http://localhost:8080
+- To reach a phone, host it on HTTPS: an internal IIS/nginx site, Azure Static
+  Web Apps, GitHub Pages, or similar. Serve the folder as-is; no build step.
 
-```bash
-cd server
-npm test          # run the state-machine test suite
-npm start         # API on http://localhost:8787, PWA served at /
-```
+## Installing on a phone
 
-Smoke test in a second terminal:
+**Android (Chrome/Edge):** open the URL — an "Install SupportCall on this
+device" button appears on the Readiness screen (or use the browser menu →
+Install app). Notifications require accepting the permission prompt
+(Android 13+).
 
-```bash
-curl -X POST localhost:8787/api/alerts -H 'content-type: application/json' \
-  -d '{"ticketId":"INC-1","title":"Production down","priority":"P1","queueId":"ERP-OH"}'
-```
+**iPhone/iPad (Safari):** open the URL → Share → Add to Home Screen. On
+iOS 16.4+ web notifications only work after the app has been added to the
+home screen and permission is granted from inside the app (Readiness screen).
 
-Watch a device stream: `curl -N 'localhost:8787/api/events?userId=U001'`
+## What this build does and doesn't do
 
-### Two-device demo (the acceptance race, live)
+Does: installable app, offline shell, on-device settings and support hours,
+real notifications and alert audio while the app is open, the full
+accept/reject/escalate/audit demo loop.
 
-With the server running, open http://localhost:8787 in two browser windows.
-Sign in as david.chen@company.com in one and sarah.thompson@company.com in
-the other (any registered email — see server/config.json). Trigger a P1 from
-either device: David's rings first (stage 1). If David rejects or times out,
-Sarah's device rings seconds later; if both race to accept, the server
-decides atomically and the loser sees who won. Readiness shows
-"Alert orchestrator: Connected — server owns timers". Without the server,
-the PWA falls back to standalone demo mode automatically.
+Doesn't (by design of the web platform): receive pushes with no backend —
+the sw.js push handler is ready, but real delivery while the app is closed
+requires a Web Push backend (VAPID keys + a server). And there is no web
+equivalent of Apple Critical Alerts or Android full-screen intents — a PWA
+cannot override mute or Do Not Disturb.
 
-Dev auth: `SUPPORTCALL_API_KEY=secret npm start` then send `x-api-key: secret`.
+This matches the design document's position (section 3): the PWA is a
+secondary/demo channel; production alerting should be native push via
+APNs/FCM, with the alert orchestrator server-side.
 
-## What is production-real vs. reference
+## Support hours
 
-Real now: the control model (server owns all timers and escalation — devices
-only display and respond), atomic acceptance, idempotent webhook intake,
-append-only audit, staged reminders, restart recovery from snapshot,
-health endpoint, and the tested state machine.
+Settings → Support hours configures your on-call window per weekday.
+An end time earlier than the start spans midnight (18:00–07:00). Equal
+start and end means on call all day. The Status screen shows live
+on-call/off-call state and your next shift; Readiness reflects it too.
 
-Reference stand-ins to replace on the Azure build (design document §7/§13):
-JSON snapshot → Azure SQL; in-process setTimeout → Service Bus scheduled
-messages or Durable Functions; SSE → SignalR + Azure Notification Hubs
-(APNs/FCM); x-api-key → Microsoft Entra ID JWT validation. The orchestrator
-is written to port 1:1 — accept() maps to a conditional UPDATE, emit() to the
-push adapter.
+## Sign-in and security
 
-## Non-negotiable design principles (from the design document)
+Each support worker signs in with their work email and name. Settings,
+support hours, escalation chain, and security choices are stored per user
+on the device, so multiple workers can share a test device without
+overwriting each other.
 
-- The support ticket stays in the support system. This app never edits it.
-- Delivery is not acknowledgement. Silence escalates.
-- First valid acceptance wins, decided centrally and atomically.
-- Rejection escalates immediately — never waits for the timer.
-- Every transition is audited.
-- The absence of alerts must be independently monitored (dead-man switch).
+The sign-in itself is simulated in this demo build. Production must
+authenticate against Microsoft Entra ID (OIDC via MSAL.js for a PWA, or
+MSAL.NET in the MAUI client), issue tokens, and bind the device
+registration to the immutable User ID for alert routing (design document
+section 5). Do not treat the demo sign-in as access control.
+
+What IS real in this build is the app lock, which addresses "don't let
+others use their app":
+
+- Biometric lock — a WebAuthn platform authenticator (Face ID, Android
+  fingerprint, Windows Hello). The OS enforces user verification; the
+  credential is bound to this device. Requires HTTPS (or localhost).
+- PIN lock fallback — 4–8 digits, stored as a salted SHA-256 hash on the
+  device, never in plain text.
+- Auto-lock after 1/5/15 minutes of inactivity or time away, plus a
+  manual "Lock now".
+- Accepting an incident while locked forces identity verification first,
+  and the audit trail records "Identity verified on this device". An
+  incident ringing while locked shows a banner on the lock screen but
+  cannot be accepted without unlocking.
+- Readiness warns when the app lock is off.

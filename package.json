@@ -1,0 +1,13 @@
+{
+  "name": "supportcall-server",
+  "version": "0.1.0",
+  "description": "SupportCall Alert Orchestrator \u2014 reference implementation (zero dependencies, Node >= 20)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "smoke": "node scripts/smoke.js"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}
